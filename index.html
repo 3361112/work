@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>灌区水闸上下游水位辅助监测系统</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.8.0/font/bootstrap-icons.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+<style>
+:root {
+  --primary-blue: #007BFF; /* 主蓝色 */
+  --secondary-gray: #AEB5C0; /* 次级灰色 */
+  --background-white: #F8F9FA; /* 背景白色 */
+  --text-dark: #343A40; /* 文字深色 */
+  --border-light: #E1E8F0; /* 边框浅色 */
+  --warning-yellow: #FFC107; /* 警告黄色 */
+}
+
+.system-container {
+  max-width: 1280px;
+  margin: 2rem auto;
+  background: var(--background-white);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+}
+
+.title {
+  text-align: center;
+  font-size: 2rem;
+  font-weight: 600;
+  margin-bottom: 2rem;
+  color: var(--primary-blue);
+}
+
+.data-input-section {
+  padding: 2rem;
+  background: white;
+  border-radius: 8px;
+  margin: 0 auto; /* 居中对齐 */
+}
+
+.input-matrix {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr); /* 每行三个单元格 */
+  gap: 1rem;
+  align-items: center;
+}
+
+.cell {
+  padding: 1rem;
+  border: 1px solid var(--border-light);
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.cell label {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  text-align: center;
+  width: 100%;
+  color: var(--text-dark);
+}
+
+.dynamic-input {
+  width: 100%;
+  border: none;
+  padding: 0.5rem 0;
+  transition: all 0.3s;
+  text-align: center;
+  background: var(--background-white);
+  color: var(--text-dark);
+}
+
+.input-unclear {
+  color: var(--warning-yellow);
+  font-weight: 700;
+}
+
+.result-display {
+  color: var(--primary-blue);
+  font-weight: 600;
+  font-size: 1.1rem;
+  margin-top: 1rem;
+}
+
+.calibration-group {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.calibration-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: var(--background-white);
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid var(--border-light);
+}
+
+.history-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  font-size: 0.9rem; /* 缩小字体大小 */
+}
+.history-table th, 
+.history-table td {
+  padding: 12px;
+  border: 1px solid var(--border-light);
+  text-align: center;
+  color: var(--text-dark);
+}
+.warning-cell {
+  color: var(--warning-yellow);
+  font-style: italic;
+}
+.action-buttons {
+  margin-top: 20px;
+  text-align: right;
+}
+.export-btn {
+  padding: 10px 20px;
+  background: var(--primary-blue);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.delete-btn {
+  padding: 5px 10px;
+  background: var(--warning-yellow);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.chart-container {
+  margin-top: 20px;
+  width: 100%; /* 确保容器宽度足够 */
+}
+#waterLevelChart {
+  width: 100%; /* 确保 canvas 宽度足够 */
+  height: 400px; /* 设置一个合适的高度 */
+}
+
+/* 并排显示记录表和折线图 */
+.display-container {
+  display: flex;
+  gap: 20px;
+}
+
+.display-container > div {
+  flex: 1;
+}
+</style>
+</head>
+<body>
+
+<div class="system-container">
+  <div class="title">灌区水闸上下游水位辅助监测系统</div>
+  <div class="data-input-section">
+    <!-- 闸上测量组 -->
+    <div class="input-matrix">
+      <div class="cell">
+        <label for="up_id"><i class="bi bi-arrow-up-square"></i> 闸上水尺（输入读数前须先选择水尺）</label>
+        <select id="up_id" class="dynamic-input">
+          <option value="P1">P1</option>
+          <option value="P2">P2</option>
+        </select>
+      </div>
+      <div class="cell">
+        <label for="up_reading"><i class="bi bi-rulers"></i> 闸上读数</label>
+        <input type="text" id="up_reading" 
+               class="dynamic-input"
+               placeholder="数值/'看不清'"
+               oninput="handleInputChange('up')">
+      </div>
+      <div class="cell">
+        <label for="up_result"><i class="bi bi-water"></i> 闸上水位</label>
+        <div class="result-display" id="up_result">--.--</div>
+      </div>
+    </div>
+
+    <!-- 闸下测量组 -->
+    <div class="input-matrix">
+      <div class="cell">
+        <label for="down_id"><i class="bi bi-arrow-down-square"></i> 闸下水尺（输入读数前须先选择水尺）</label>
+        <select id="down_id" class="dynamic-input">
+          <option value="P1">P1</option>
+          <option value="P2">P2</option>
+        </select>
+      </div>
+      <div class="cell">
+        <label for="down_reading"><i class="bi bi-rulers"></i> 闸下读数</label>
+        <input type="text" id="down_reading"
+               class="dynamic-input"
+               placeholder="数值/'看不清'"
+               oninput="handleInputChange('down')">
+      </div>
+      <div class="cell">
+        <label for="down_result"><i class="bi bi-water"></i> 闸下水位</label>
+        <div class="result-display" id="down_result">--.--</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 基数校准区 -->
+  <div class="calibration-group">
+    <div class="calibration-label">
+      <i class="bi bi-pin-map"></i>
+      <span>闸上P1基数</span>
+      <input type="number" step="0.01" id="cal_up_p1" class="dynamic-input">
+    </div>
+    <div class="calibration-label">
+      <i class="bi bi-pin-map"></i>
+      <span>闸上P2基数</span>
+      <input type="number" step="0.01" id="cal_up_p2" class="dynamic-input">
+    </div>
+    <div class="calibration-label">
+      <i class="bi bi-pin-map"></i>
+      <span>闸下P1基数</span> 
+      <input type="number" step="0.01" id="cal_down_p1" class="dynamic-input">
+    </div>
+    <div class="calibration-label">
+      <i class="bi bi-pin-map"></i>
+      <span>闸下P2基数</span>
+      <input type="number" step="0.01" id="cal_down_p2" class="dynamic-input">
+    </div>
+  </div>
+
+  <!-- 并排显示记录表和折线图 -->
+  <div class="display-container">
+    <!-- 历史记录表 -->
+    <div>
+      <table class="history-table">
+        <thead>
+          <tr>
+            <th>记录时间</th>
+            <th>闸上编号</th>
+            <th>闸上读数</th>
+            <th>闸上水位</th>
+            <th>闸下编号</th>
+            <th>闸下读数</th>
+            <th>闸下水位</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+
+    <!-- 水位趋势图 -->
+    <div>
+      <canvas id="waterLevelChart"></canvas>
+    </div>
+  </div>
+
+  <div class="action-buttons">
+    <button class="export-btn" onclick="saveMeasurement()">
+      <i class="bi bi-database-add"></i> 保存记录
+    </button>
+    <button class="export-btn" onclick="exportToExcel()">
+      <i class="bi bi-file-earmark-excel"></i> 导出Excel
+    </button>
+  </div>
+</div>
+
+<script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+<script>
+class CalibrationManager {
+  static STORAGE_KEY = 'sluiceCalibration';
+  
+  static load() {
+    const defaults = { up: { P1: 29.46, P2: 31.65 }, down: { P1: 29.71, P2: 31.68 }};
+    return JSON.parse(localStorage.getItem(this.STORAGE_KEY)) || defaults;
+  }
+
+  static save(config) {
+    localStorage.setItem(this.STORAGE_KEY, JSON.stringify(config));
+  }
+}
+
+function computeSluiceLevel(type) {
+  const inputs = {
+    up: {
+      id: document.getElementById('up_id').value.trim(),
+      reading: document.getElementById('up_reading').value.trim(),
+      resultField: document.getElementById('up_result')
+    },
+    down: {
+      id: document.getElementById('down_id').value.trim(),
+      reading: document.getElementById('down_reading').value.trim(),
+      resultField: document.getElementById('down_result')
+    }
+  };
+
+  const current = inputs[type];
+  if (!current.reading) return null;
+
+  // 模糊读数补偿逻辑
+  if (current.reading === '看不清') {
+    const counterpart = inputs[type === 'up' ? 'down' : 'up'];
+    const counterpartValue = parseFloat(counterpart.resultField.textContent);
+    if (isNaN(counterpartValue)) return null;
+    return type === 'up' ? counterpartValue + 0.02 : counterpartValue - 0.02;
+  }
+
+  // 精确读数计算
+  const config = CalibrationManager.load();
+  const baseValue = config[type][current.id];
+  return parseFloat(current.reading) + baseValue;
+}
+
+function updateResults() {
+  // 先计算闸下水位
+  const downResult = computeSluiceLevel('down');
+  document.getElementById('down_result').textContent = 
+    downResult !== null ? downResult.toFixed(2) : '--.--';
+
+  // 再计算闸上水位
+  const upReading = document.getElementById('up_reading').value.trim();
+  if (upReading === '看不清') {
+    // 如果闸上读数为“看不清”，使用闸下水位加0.02
+    document.getElementById('up_result').textContent = 
+      downResult !== null ? (downResult + 0.02).toFixed(2) : '--.--';
+  } else {
+    // 否则，正常计算闸上水位
+    const upResult = computeSluiceLevel('up');
+    document.getElementById('up_result').textContent = 
+      upResult !== null ? upResult.toFixed(2) : '--.--';
+  }
+}
+
+function handleInputChange(type) {
+  const input = document.getElementById(`${type}_reading`);
+  input.classList.toggle('input-unclear', input.value.trim() === '看不清');
+  updateResults();
+}
+
+// 基数配置同步
+function updateCalibration() {
+  const config = CalibrationManager.load();
+  document.getElementById('cal_up_p1').value = config.up.P1.toFixed(2);
+  document.getElementById('cal_up_p2').value = config.up.P2.toFixed(2);
+  document.getElementById('cal_down_p1').value = config.down.P1.toFixed(2);
+  document.getElementById('cal_down_p2').value = config.down.P2.toFixed(2);
+}
+
+document.querySelectorAll('.calibration-group input').forEach(input => {
+  input.addEventListener('change', e => {
+    const [_, position, id] = e.target.id.split('_');
+    const config = CalibrationManager.load();
+    config[position][id] = parseFloat(e.target.value);
+    CalibrationManager.save(config);
+    updateResults();
+  });
+});
+
+// 数据持久化模块
+let measurementRecords = JSON.parse(localStorage.getItem('waterMeasurements')) || [
+  {
+    timestamp: new Date().toISOString(),
+    upID: 'P1',
+    upReading: '1.23',
+    upResult: '30.69',
+    downID: 'P1',
+    downReading: '1.51',
+    downResult: '31.22'
+  },
+  {
+    timestamp: new Date(Date.now() - 3600000).toISOString(), // 1小时前
+    upID: 'P1',
+    upReading: '1.25',
+    upResult: '30.71',
+    downID: 'P1',
+    downReading: '1.53',
+    downResult: '31.24'
+  }
+];
+
+function saveMeasurement() {
+  const record = {
+    timestamp: new Date().toISOString(),
+    upID: document.getElementById('up_id').value,
+    upReading: document.getElementById('up_reading').value || "空值",
+    upResult: document.getElementById('up_result').textContent,
+    downID: document.getElementById('down_id').value,
+    downReading: document.getElementById('down_reading').value || "空值",
+    downResult: document.getElementById('down_result').textContent
+  };
+
+  // 将新记录添加到数组末尾
+  measurementRecords.push(record);
+  // 按时间戳排序
+  measurementRecords.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+  localStorage.setItem('waterMeasurements', JSON.stringify(measurementRecords));
+  console.log("保存记录：", record);
+  renderHistory();
+  updateChart();
+}
+
+function renderHistory() {
+  const tbody = document.getElementById('historyBody');
+  tbody.innerHTML = measurementRecords.map((rec, index) => `
+    <tr>
+      <td>${new Date(rec.timestamp).toLocaleString()}</td>
+      <td>${rec.upID}</td>
+      <td class="${rec.upReading === '看不清' ? 'warning-cell' : ''}">${rec.upReading}</td>
+      <td>${rec.upResult}</td>
+      <td>${rec.downID}</td>
+      <td class="${rec.downReading === '看不清' ? 'warning-cell' : ''}">${rec.downReading}</td>
+      <td>${rec.downResult}</td>
+      <td><button class="delete-btn" onclick="deleteRecord(${index})">删除</button></td>
+    </tr>
+  `).join('');
+}
+
+function deleteRecord(index) {
+  measurementRecords.splice(index, 1);
+  localStorage.setItem('waterMeasurements', JSON.stringify(measurementRecords));
+  console.log("删除记录：", index);
+  renderHistory();
+  updateChart();
+}
+
+function exportToExcel() {
+  const wsData = [
+    ['时间戳', '闸上编号', '闸上读数', '闸上水位', '闸下编号', '闸下读数', '闸下水位'],
+    ...measurementRecords.map(r => [
+      new Date(r.timestamp).toISOString(),
+      r.upID,
+      r.upReading,
+      typeof r.upResult === 'number' ? r.upResult.toFixed(2) : r.upResult,
+      r.downID,
+      r.downReading,
+      typeof r.downResult === 'number' ? r.downResult.toFixed(2) : r.downResult
+    ])
+  ];
+
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "水位记录");
+  XLSX.writeFile(wb, `水位记录_${new Date().toLocaleDateString().replace(/\//g,'-')}.xlsx`);
+}
+
+// 初始化图表
+function initChart() {
+  if (typeof Chart === 'undefined') {
+    console.error("Chart.js 未正确加载，请检查加载顺序或 CDN 链接");
+    return;
+  }
+
+  console.log("Chart.js 加载成功，版本：", Chart.version);
+
+  const ctx = document.getElementById('waterLevelChart').getContext('2d');
+  const timestamps = measurementRecords.map(rec => new Date(rec.timestamp).toLocaleString());
+  const upLevels = measurementRecords.map(rec => parseFloat(rec.upResult));
+  const downLevels = measurementRecords.map(rec => parseFloat(rec.downResult));
+
+  // 反转数组，使最新的记录显示在最右侧
+  const reversedTimestamps = timestamps.reverse();
+  const reversedUpLevels = upLevels.reverse();
+  const reversedDownLevels = downLevels.reverse();
+
+  const chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: reversedTimestamps,
+      datasets: [
+        {
+          label: '闸上水位',
+          data: reversedUpLevels,
+          borderColor: 'rgba(75, 192, 192, 1)',
+          backgroundColor: 'rgba(75, 192, 192, 0.2)',
+          fill: true,
+        },
+        {
+          label: '闸下水位',
+          data: reversedDownLevels,
+          borderColor: 'rgba(153, 102, 255, 1)',
+          backgroundColor: 'rgba(153, 102, 255, 0.2)',
+          fill: true,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      scales: {
+        x: {
+          title: {
+            display: true,
+            text: '时间'
+          }
+        },
+        y: {
+          title: {
+            display: true,
+            text: '水位 (米)'
+          }
+        }
+      }
+    }
+  });
+
+  return chart;
+}
+
+// 更新图表数据
+function updateChart() {
+  const timestamps = measurementRecords.map(rec => new Date(rec.timestamp).toLocaleString());
+  const upLevels = measurementRecords.map(rec => parseFloat(rec.upResult));
+  const downLevels = measurementRecords.map(rec => parseFloat(rec.downResult));
+
+  // 反转数组，使最新的记录显示在最右侧
+  const reversedTimestamps = timestamps.reverse();
+  const reversedUpLevels = upLevels.reverse();
+  const reversedDownLevels = downLevels.reverse();
+
+  console.log("更新图表数据：", reversedTimestamps, reversedUpLevels, reversedDownLevels);
+
+  chart.data.labels = reversedTimestamps;
+  chart.data.datasets[0].data = reversedUpLevels;
+  chart.data.datasets[1].data = reversedDownLevels;
+  chart.update();
+}
+
+let chart;
+window.addEventListener('DOMContentLoaded', () => {
+  console.log("页面加载，加载校准配置和历史记录");
+  updateCalibration();
+  updateResults();
+  renderHistory();
+  chart = initChart();
+});
+</script>
+</body>
+</html>
